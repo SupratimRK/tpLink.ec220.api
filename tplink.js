@@ -157,6 +157,7 @@ async function main() {
 
     const client = new TPLinkClient(opts.host, opts.password);
 
+    let hasError = false;
     try {
         console.log(`Connecting to TP-Link router at ${opts.host}...`);
         await client.login();
@@ -466,8 +467,15 @@ async function main() {
                 process.exit(1);
         }
     } catch (err) {
+        hasError = true;
         console.error("\n[Error executing command]:", err.message);
-        process.exit(1);
+    } finally {
+        try {
+            await client.logout();
+        } catch (_) {}
+        if (hasError) {
+            process.exit(1);
+        }
     }
 }
 
