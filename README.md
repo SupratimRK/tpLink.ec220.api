@@ -111,9 +111,47 @@ node tplink.js set-wifi --band 2.4g --hidden 1
 node tplink.js set-wifi --band 5g --enable 0
 ```
 
-### 6. View Connected Devices
+### 6. Manage LAN IP Configuration
+```bash
+# View router LAN IP and subnet mask:
+node tplink.js lan
+
+# Update LAN IP and subnet mask:
+node tplink.js set-lan --ip 10.0.0.1 --mask 255.255.255.0
+```
+
+### 7. Manage DHCP Server
+```bash
+# View current DHCP server configuration (status, pool range, lease duration):
+node tplink.js dhcp
+
+# Enable/disable DHCP server:
+node tplink.js set-dhcp --enable 1
+node tplink.js set-dhcp --enable 0
+
+# Configure DHCP pool range, lease time, and custom DNS:
+node tplink.js set-dhcp --enable 1 --start 10.0.0.100 --end 10.0.0.249 --lease 7200 --dns1 1.0.0.1 --dns2 1.1.1.1
+```
+
+### 8. View Connected Client Devices (LAN / Wi-Fi)
 ```bash
 node tplink.js clients
+# or
+python tplink.py clients
+```
+Displays all connected devices with their IP address, MAC address, connection status (Online/Offline), reservation type (Static/Dynamic), and real-time network traffic throughput.
+
+### 9. View IP-MAC Address Reservations (Static Bindings)
+```bash
+node tplink.js bindings
+# or
+python tplink.py bindings
+```
+
+### 10. Query Raw Router Data Blocks
+```bash
+# Query any data block by ID (e.g. Block 0 for device, Block 8 for DHCP, Block 23 for WAN status):
+node tplink.js raw "8|1,0,0"
 ```
 
 ---
@@ -134,20 +172,17 @@ async function run() {
     const wifi = await router.getWirelessSettings();
     console.log(`2.4G SSID: ${wifi['2.4g'].ssid}, 5G SSID: ${wifi['5g'].ssid}`);
     
-    // 2. Change Wi-Fi settings (both bands or specific band)
-    await router.setWirelessSettings({
-        band: 'both',
-        ssid: 'MyHomeNetwork',
-        password: 'NewSecretPassword123'
-    });
-    console.log("Wi-Fi settings updated successfully!");
+    // 2. Inspect LAN configuration
+    const lan = await router.getLanSettings();
+    console.log(`LAN IP: ${lan.ip}, Subnet: ${lan.mask}`);
     
-    // 3. Inspect WAN MAC
-    const macInfo = await router.getMacSettings();
-    console.log(`Current WAN MAC: ${macInfo.currentWanMac}`);
+    // 3. Inspect DHCP server
+    const dhcp = await router.getDhcpServer();
+    console.log(`DHCP Enabled: ${dhcp.enabled}, Range: ${dhcp.poolStart} - ${dhcp.poolEnd}`);
     
-    // 4. Change WAN MAC address
-    // await router.setWanMacAddress('00:11:22:33:44:55');
+    // 4. List connected clients
+    const clients = await router.getConnectedClients();
+    console.log(`Active clients found: ${clients.length}`);
 }
 
 run();

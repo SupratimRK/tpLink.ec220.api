@@ -108,8 +108,26 @@ Commands:
                          --enable <0|1>      1 to enable radio, 0 to disable
                          --hidden <0|1>      1 to hide SSID broadcast, 0 to broadcast
 
-  clients              Display connected devices on the network
-  raw <blockId>        Query an arbitrary router block (e.g., "33|1,1,0", "1|1,0,0")
+  lan                  Display router LAN IP configuration
+  set-lan              Update router LAN IP & subnet mask
+                       Options:
+                         --ip <ip>           New router LAN IP (e.g. 10.0.0.1)
+                         --mask <mask>       Subnet mask (default: 255.255.255.0)
+
+  dhcp                 Display DHCP Server configuration (pool range, lease time, status)
+  set-dhcp             Update DHCP Server configuration
+                       Options:
+                         --enable <0|1>      1 to enable DHCP server, 0 to disable
+                         --start <ip>        Start IP pool address (e.g. 10.0.0.100)
+                         --end <ip>          End IP pool address (e.g. 10.0.0.249)
+                         --lease <sec>       Lease duration in seconds (default: 7200)
+                         --gateway <gw>      Gateway IP (optional, 0.0.0.0 for router default)
+                         --dns1 <ip>         Primary DNS
+                         --dns2 <ip>         Secondary DNS
+
+  clients              Display active connected LAN client devices
+  bindings             Display static IP-MAC address bindings / reservations
+  raw <blockId>        Query an arbitrary router block (e.g., "8|1,0,0", "13|1,0,0")
 
 Options:
   --host <ip>          Router IP (overrides ROUTER_IP in .env)
@@ -314,10 +332,112 @@ async function main() {
                 break;
             }
 
+            case 'lan': {
+                console.log("\n--- Router LAN Configuration ---");
+                const lan = await client.getLanSettings();
+                console.log(`  LAN IP Address: ${lan.ip}`);
+                console.log(`  Subnet Mask:    ${lan.mask}`);
+                console.log(`  Gateway:        ${lan.gateway}`);
+                break;
+            }
+
+            case 'set-lan': {
+                const { ip, mask } = opts.params;
+                if (!ip) {
+                    console.error("Error: --ip is required for set-lan (e.g. node tplink.js set-lan --ip 10.0.0.1)");
+                    process.exit(1);
+                }
+
+                console.log(`Updating LAN IP configuration to ${ip} (Mask: ${mask || '255.255.255.0'})...`);
+                const res = await client.setLanSettings({ ip, mask: mask || '255.255.255.0' });
+                console.log("LAN IP update submitted! Router response status:", res._status);
+                break;
+            }
+
+            case 'dhcp': {
+                console.log("\n--- DHCP Server Configuration ---");
+                const dhcp = await client.getDhcpServer();
+                console.log(`  DHCP Server:    ${dhcp.enabled ? 'Enabled' : 'Disabled'}`);
+                console.log(`  IP Pool Range:  ${dhcp.poolStart} - ${dhcp.poolEnd}`);
+                console.log(`  Lease Duration: ${dhcp.leaseTime} seconds (${dhcp.leaseTimeMinutes} minutes)`);
+                console.log(`  Gateway:        ${dhcp.gateway === '0.0.0.0' ? 'Default (Router IP)' : dhcp.gateway}`);
+                console.log(`  Primary DNS:    ${dhcp.primaryDns === '0.0.0.0' ? 'Default' : dhcp.primaryDns}`);
+                console.log(`  Secondary DNS:  ${dhcp.secondaryDns === '0.0.0.0' ? 'Default' : dhcp.secondaryDns}`);
+                break;
+            }
+
+            case 'set-dhcp': {
+                const { enable, start, end, lease, gateway, dns1, dns2 } = opts.params;
+                if (enable === undefined && !start && !end && !lease && !gateway && !dns1 && !dns2) {
+                    console.error("Error: At least one DHCP parameter must be specified (--enable, --start, --end, --lease, --gateway, --dns1, --dns2).");
+                    printUsage();
+                    process.exit(1);
+                }
+
+                console.log("Updating DHCP Server settings...");
+                const res = await client.setDhcpServer({
+                    enable: enable !== undefined ? (enable === '1' || enable === 'true') : undefined,
+                    poolStart: start || undefined,
+                    poolEnd: end || undefined,
+                    leaseTime: lease ? parseInt(lease, 10) : undefined,
+                    gateway: gateway || undefined,
+                    primaryDns: dns1 || undefined,
+                    secondaryDns: dns2 || undefined
+                });
+
+                console.log("DHCP Server settings updated successfully!");
+                console.log("Router response status:", res._status);
+
+                console.log("\nUpdated DHCP Configuration:");
+                const updated = await client.getDhcpServer();
+                console.log(JSON.stringify(updated, null, 2));
+                break;
+            }
+
             case 'clients': {
-                console.log("\n--- Connected Clients ---");
+                console.log("\n--- Connected LAN Client Devices ---");
                 const clients = await client.getConnectedClients();
-                console.log(clients._raw || JSON.stringify(clients, null, 2));
+                if (clients.length === 0) {
+                    console.log("  No active client devices detected.");
+                } else {
+                    console.log(`  Total Active Clients: ${clients.length}\n`);
+                    console.log("  #   IP Address       MAC Address        Status    Binding    Rate");
+                    console.log("  --  ---------------  -----------------  --------  ---------  -------------------------");
+                    clients.forEach((c, idx) => {
+                        const num = String(idx + 1).padStart(2);
+                        const ip = c.ip.padEnd(15);
+                        const mac = (c.mac || 'N/A').padEnd(17);
+                        const status = c.online ? 'Online ' : 'Offline';
+                        const binding = c.bound ? 'Static   ' : 'Dynamic  ';
+                        let rate = '';
+                        if (c.online && (c.upRate > 0 || c.downRate > 0)) {
+                            rate = `▲ ${(c.upRate / 1024).toFixed(1)} KB/s  ▼ ${(c.downRate / 1024).toFixed(1)} KB/s`;
+                        } else if (c.online) {
+                            rate = 'Idle';
+                        }
+                        console.log(`  ${num}  ${ip}  ${mac}  ${status}  ${binding}  ${rate}`.trimEnd());
+                    });
+                }
+                break;
+            }
+
+            case 'bindings': {
+                console.log("\n--- IP-MAC Address Reservations / Bindings ---");
+                const bindings = await client.getIpBindings();
+                if (bindings.length === 0) {
+                    console.log("  No static IP-MAC reservations found.");
+                } else {
+                    console.log(`  Total Reservations: ${bindings.length}\n`);
+                    console.log("  #   IP Address       MAC Address        Bound");
+                    console.log("  --  ---------------  -----------------  -----");
+                    bindings.forEach((b, idx) => {
+                        const num = String(idx + 1).padStart(2);
+                        const ip = b.ip.padEnd(15);
+                        const mac = (b.mac || 'N/A').padEnd(17);
+                        const bound = b.bound ? 'Yes' : 'No';
+                        console.log(`  ${num}  ${ip}  ${mac}  ${bound}`);
+                    });
+                }
                 break;
             }
 
