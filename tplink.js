@@ -86,13 +86,13 @@ Usage:
 Commands:
   status               Display router device info, LAN settings, and active WAN metrics
   wan                  Display current WAN connection details & static IP configuration
-  set-wan              Update WAN Static IP configuration
+  set-wan              Update WAN Static IP configuration (supports partial updates)
                        Options:
-                         --ip <ip>           WAN IP address (required)
-                         --mask <mask>       Subnet mask (required)
-                         --gateway <gw>      Default gateway (required)
-                         --dns1 <ip>         Primary DNS (default: 1.0.0.1)
-                         --dns2 <ip>         Secondary DNS (default: 1.1.1.1)
+                         --gateway <gw>      Default gateway
+                         --ip <ip>           WAN IP address
+                         --mask <mask>       Subnet mask
+                         --dns1 <ip>         Primary DNS
+                         --dns2 <ip>         Secondary DNS
                          --mtu <bytes>       MTU size (default: 1500)
 
   mac                  Display current WAN MAC address and clone type
@@ -215,26 +215,37 @@ async function main() {
 
             case 'set-wan': {
                 const { ip, mask, gateway, dns1, dns2, mtu } = opts.params;
-                if (!ip || !mask || !gateway) {
-                    console.error("Error: --ip, --mask, and --gateway are required for set-wan.");
+                if (!ip && !mask && !gateway && !dns1 && !dns2 && !mtu) {
+                    console.error("Error: At least one WAN parameter must be specified (--gateway, --ip, --mask, --dns1, --dns2, --mtu).");
                     printUsage();
                     process.exit(1);
                 }
 
+                console.log(`Fetching current WAN configuration from router...`);
+                const current = await client.getWanStaticSettings();
+                const currentDns = Array.isArray(current.dns) ? current.dns : [current.dns || '1.0.0.1', '1.1.1.1'];
+
+                const targetIp = ip || current.ip;
+                const targetMask = mask || current.mask;
+                const targetGw = gateway || current.gateway;
+                const targetDns1 = dns1 || currentDns[0] || '1.0.0.1';
+                const targetDns2 = dns2 || currentDns[1] || '1.1.1.1';
+                const targetMtu = mtu ? parseInt(mtu, 10) : (parseInt(current.mtu, 10) || 1500);
+
                 console.log(`Updating WAN static IP configuration...`);
-                console.log(`  IP:      ${ip}`);
-                console.log(`  Mask:    ${mask}`);
-                console.log(`  Gateway: ${gateway}`);
-                console.log(`  DNS:     ${dns1 || '1.0.0.1'}, ${dns2 || '1.1.1.1'}`);
-                console.log(`  MTU:     ${mtu || 1500}`);
+                console.log(`  IP:      ${targetIp}${ip ? ' (updated)' : ' (unchanged)'}`);
+                console.log(`  Mask:    ${targetMask}${mask ? ' (updated)' : ' (unchanged)'}`);
+                console.log(`  Gateway: ${targetGw}${gateway ? ' (updated)' : ' (unchanged)'}`);
+                console.log(`  DNS:     ${targetDns1}, ${targetDns2}${dns1 || dns2 ? ' (updated)' : ' (unchanged)'}`);
+                console.log(`  MTU:     ${targetMtu}${mtu ? ' (updated)' : ' (unchanged)'}`);
 
                 const res = await client.setWanStaticSettings({
-                    ip,
-                    mask,
-                    gateway,
-                    priDns: dns1 || '1.0.0.1',
-                    sndDns: dns2 || '1.1.1.1',
-                    mtu: mtu ? parseInt(mtu, 10) : 1500
+                    ip: targetIp,
+                    mask: targetMask,
+                    gateway: targetGw,
+                    priDns: targetDns1,
+                    sndDns: targetDns2,
+                    mtu: targetMtu
                 });
 
                 console.log("\nSettings update submitted successfully!");

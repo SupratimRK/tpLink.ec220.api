@@ -74,11 +74,17 @@ python tplink.py status
 node tplink.js wan
 ```
 
-### 3. Update WAN Static IP Settings (Example)
+### 3. Update WAN Static IP Settings
+Supports full or partial updates (omitted fields automatically retain their current router values):
 ```bash
+# Update only the default gateway:
+node tplink.js set-wan --gateway 192.0.2.1
+
+# Update only DNS servers:
+node tplink.js set-wan --dns1 1.0.0.1 --dns2 1.1.1.1
+
+# Full WAN static configuration update:
 node tplink.js set-wan --ip 192.0.2.10 --mask 255.255.255.0 --gateway 192.0.2.1 --dns1 1.0.0.1 --dns2 1.1.1.1
-# or
-python tplink.py set-wan --ip 192.0.2.10 --mask 255.255.255.0 --gateway 192.0.2.1 --dns1 1.0.0.1 --dns2 1.1.1.1
 ```
 
 ### 4. Manage WAN MAC Address (Cloning)
