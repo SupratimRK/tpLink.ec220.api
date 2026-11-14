@@ -94,11 +94,22 @@ Commands:
                          --dns1 <ip>         Primary DNS (default: 1.0.0.1)
                          --dns2 <ip>         Secondary DNS (default: 1.1.1.1)
                          --mtu <bytes>       MTU size (default: 1500)
+
   mac                  Display current WAN MAC address and clone type
   set-mac <mac>        Change WAN MAC address (e.g. AA:BB:CC:DD:EE:FF or aa-bb-cc-dd-ee-ff)
   reset-mac            Reset WAN MAC address back to factory router default
+
+  wifi                 Display current 2.4 GHz & 5 GHz wireless configuration (SSID, password, state)
+  set-wifi             Update wireless network settings
+                       Options:
+                         --ssid <name>       New WiFi SSID name
+                         --password <pwd>    New WiFi password (min 8 characters)
+                         --band <band>       Band to update: 2.4g, 5g, or both (default: both)
+                         --enable <0|1>      1 to enable radio, 0 to disable
+                         --hidden <0|1>      1 to hide SSID broadcast, 0 to broadcast
+
   clients              Display connected devices on the network
-  raw <blockId>        Query an arbitrary router block (e.g., "1|1,0,0" or "23|1,0,0")
+  raw <blockId>        Query an arbitrary router block (e.g., "33|1,1,0", "1|1,0,0")
 
 Options:
   --host <ip>          Router IP (overrides ROUTER_IP in .env)
@@ -161,6 +172,11 @@ async function main() {
                 const macInfo = await client.getMacSettings();
                 console.log(`  Current WAN:  ${macInfo.currentWanMac}`);
                 console.log(`  Type:         ${macInfo.wanMacTypeDescription}`);
+
+                console.log("\n--- Wireless Networks ---");
+                const wifi = await client.getWirelessSettings();
+                console.log(`  2.4 GHz SSID: ${wifi['2.4g'].ssid} (State: ${wifi['2.4g'].enabled ? 'Enabled' : 'Disabled'})`);
+                console.log(`  5 GHz SSID:   ${wifi['5g'].ssid} (State: ${wifi['5g'].enabled ? 'Enabled' : 'Disabled'})`);
                 break;
             }
 
@@ -242,6 +258,59 @@ async function main() {
 
                 const updated = await client.getMacSettings();
                 console.log(`Active WAN MAC is now: ${updated.currentWanMac} (${updated.wanMacTypeDescription})`);
+                break;
+            }
+
+            case 'wifi': {
+                console.log("\n--- Wireless Networks Configuration ---");
+                const wifi = await client.getWirelessSettings();
+                
+                console.log("\n[2.4 GHz Band]");
+                console.log(`  Radio State:  ${wifi['2.4g'].enabled ? 'Enabled' : 'Disabled'}`);
+                console.log(`  SSID:         ${wifi['2.4g'].ssid}`);
+                console.log(`  Broadcast:    ${wifi['2.4g'].hidden ? 'Hidden' : 'Visible'}`);
+                console.log(`  Password:     ${wifi['2.4g'].password}`);
+                console.log(`  Security:     ${wifi['2.4g'].security}`);
+
+                console.log("\n[5 GHz Band]");
+                console.log(`  Radio State:  ${wifi['5g'].enabled ? 'Enabled' : 'Disabled'}`);
+                console.log(`  SSID:         ${wifi['5g'].ssid}`);
+                console.log(`  Broadcast:    ${wifi['5g'].hidden ? 'Hidden' : 'Visible'}`);
+                console.log(`  Password:     ${wifi['5g'].password}`);
+                console.log(`  Security:     ${wifi['5g'].security}`);
+                break;
+            }
+
+            case 'set-wifi': {
+                const { ssid, password, band, enable, hidden } = opts.params;
+                const targetBand = band || 'both';
+
+                if (!ssid && !password && enable === undefined && hidden === undefined) {
+                    console.error("Error: At least one wireless parameter must be specified (--ssid, --password, --enable, --hidden).");
+                    printUsage();
+                    process.exit(1);
+                }
+
+                console.log(`Updating Wireless Settings for band: ${targetBand}...`);
+                if (ssid) console.log(`  SSID:        ${ssid}`);
+                if (password) console.log(`  Password:    ${password}`);
+                if (enable !== undefined) console.log(`  Radio:       ${enable === '1' || enable === 'true' ? 'Enable' : 'Disable'}`);
+                if (hidden !== undefined) console.log(`  Broadcast:   ${hidden === '1' || hidden === 'true' ? 'Hidden' : 'Visible'}`);
+
+                const res = await client.setWirelessSettings({
+                    band: targetBand,
+                    ssid: ssid || undefined,
+                    password: password || undefined,
+                    enabled: enable !== undefined ? (enable === '1' || enable === 'true') : undefined,
+                    hidden: hidden !== undefined ? (hidden === '1' || hidden === 'true') : undefined
+                });
+
+                console.log("\nWireless settings submitted successfully!");
+                console.log("Router response:", res);
+
+                console.log("\nUpdated Settings:");
+                const updated = await client.getWirelessSettings(targetBand);
+                console.log(JSON.stringify(updated, null, 2));
                 break;
             }
 

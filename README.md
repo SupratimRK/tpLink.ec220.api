@@ -54,6 +54,7 @@ The TP-Link EC220-G5 web interface uses a proprietary multi-layer cryptographic 
 - **Block 22 (`22|1,0,0`)**: Link mode & connection type
 - **Block 23 (`23|1,0,0`)**: Live WAN connection status, packet counts, uptime, and DNS servers
 - **Block 24 (`24|1,0,0`)**: WAN Static IP configuration (IP, subnet mask, gateway, DNS servers, MTU)
+- **Block 32 & 33**: Wireless basic settings (`33|1,1,0` for 2.4 GHz, `33|2,1,0` for 5 GHz)
 
 ---
 
@@ -94,7 +95,23 @@ python tplink.py set-mac 00-11-22-33-44-55
 node tplink.js reset-mac
 ```
 
-### 5. View Connected Devices
+### 5. Manage Wireless (Wi-Fi) Settings
+```bash
+# View current 2.4 GHz & 5 GHz Wi-Fi settings (SSID, password, state):
+node tplink.js wifi
+
+# Update both 2.4 GHz & 5 GHz SSID and password:
+node tplink.js set-wifi --ssid "MyHomeNetwork" --password "SecretPassword123"
+
+# Update only 5 GHz band:
+node tplink.js set-wifi --band 5g --ssid "MyHomeNetwork_5G" --password "SecretPassword123"
+
+# Hide or disable wireless radio:
+node tplink.js set-wifi --band 2.4g --hidden 1
+node tplink.js set-wifi --band 5g --enable 0
+```
+
+### 6. View Connected Devices
 ```bash
 node tplink.js clients
 ```
@@ -113,16 +130,24 @@ async function run() {
     // Login and negotiate AES session keys
     await router.login();
     
-    // Inspect current WAN MAC
+    // 1. Inspect Wi-Fi settings
+    const wifi = await router.getWirelessSettings();
+    console.log(`2.4G SSID: ${wifi['2.4g'].ssid}, 5G SSID: ${wifi['5g'].ssid}`);
+    
+    // 2. Change Wi-Fi settings (both bands or specific band)
+    await router.setWirelessSettings({
+        band: 'both',
+        ssid: 'MyHomeNetwork',
+        password: 'NewSecretPassword123'
+    });
+    console.log("Wi-Fi settings updated successfully!");
+    
+    // 3. Inspect WAN MAC
     const macInfo = await router.getMacSettings();
-    console.log(`Current WAN MAC: ${macInfo.currentWanMac} (${macInfo.wanMacTypeDescription})`);
+    console.log(`Current WAN MAC: ${macInfo.currentWanMac}`);
     
-    // Change WAN MAC address
-    await router.setWanMacAddress('00:11:22:33:44:55');
-    console.log("MAC address changed successfully!");
-    
-    // Or reset back to factory default
-    // await router.resetWanMacAddress();
+    // 4. Change WAN MAC address
+    // await router.setWanMacAddress('00:11:22:33:44:55');
 }
 
 run();
